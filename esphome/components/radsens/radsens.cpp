@@ -50,21 +50,21 @@ bool RadSensComponent::get_control(uint8_t reg){
 }
 
 void RadSensComponent::set_high_voltage(bool enable){
-  set_control(RADSENS_REGISTER_CONTROL_HIGH_VOLTAGE_GENERATOR, enable);
+  //  set_control(RADSENS_REGISTER_CONTROL_HIGH_VOLTAGE_GENERATOR, enable);
 }
 bool RadSensComponent::get_high_voltage(){
   return get_control(RADSENS_REGISTER_CONTROL_HIGH_VOLTAGE_GENERATOR);
 }
 
 void RadSensComponent::set_led(bool enable){
-  set_control(RADSENS_REGISTER_CONTROL_LED, enable);
+  //  set_control(RADSENS_REGISTER_CONTROL_LED, enable);
 }
 bool RadSensComponent::get_led(){
   return get_control(RADSENS_REGISTER_CONTROL_LED);
 }
 
 void RadSensComponent::set_low_power(bool enable){
-  set_control(RADSENS_REGISTER_CONTROL_LOW_POWER_MODE, enable);
+  //  set_control(RADSENS_REGISTER_CONTROL_LOW_POWER_MODE, enable);
 }
 bool RadSensComponent::get_low_power(){
   return get_control(RADSENS_REGISTER_CONTROL_LOW_POWER_MODE);
