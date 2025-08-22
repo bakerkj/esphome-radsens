@@ -63,7 +63,7 @@ class RadSensComponent : public PollingComponent, public i2c::I2CDevice {
     NONE = 0,
     COMMUNICATION_FAILED,
     ID_REGISTERS,
-  } error_code_;
+  } error_code_ = NONE;
 
 };
 
