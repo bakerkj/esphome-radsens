@@ -32,7 +32,7 @@ void RadSensComponent::set_control(uint8_t reg, uint8_t val){
   // it does not appear to be needed from experimentation
   if (!this->write_byte(reg, val)){
     ESP_LOGCONFIG(TAG, "RadSens Write: failed writing control register %u", reg);
-    this->error_code_ = COMMUNICATION_FAILED;
+    this->error_code_ = COMMUNICATION_FAILED_1;
     this->mark_failed();
     return;    
   }
@@ -42,7 +42,7 @@ bool RadSensComponent::get_control(uint8_t reg){
   uint8_t val;
   if (!this->read_byte(reg, &val)){
     ESP_LOGCONFIG(TAG, "RadSens Write: failed reading control register %u", reg);
-    this->error_code_ = COMMUNICATION_FAILED;
+    this->error_code_ = COMMUNICATION_FAILED_2;
     this->mark_failed();
     return false;    
   }
@@ -75,7 +75,7 @@ void RadSensComponent::setup() {
   uint8_t id;
   if (!this->read_byte(RADSENS_REGISTER_IDENTIFICATION, &id)) {
     ESP_LOGCONFIG(TAG, "RadSens Setup: failed reading id");
-    this->error_code_ = COMMUNICATION_FAILED;
+    this->error_code_ = COMMUNICATION_FAILED_3;
     this->mark_failed();
     return;
   }
@@ -89,7 +89,7 @@ void RadSensComponent::setup() {
 
   if (!this->read_byte(RADSENS_REGISTER_IDENTIFICATION_FIRMWARE_VERSION, &this->firmware_version)) {
     ESP_LOGCONFIG(TAG, "RadSens Setup: failed reading firmware version");
-    this->error_code_ = COMMUNICATION_FAILED;
+    this->error_code_ = COMMUNICATION_FAILED_4;
     this->mark_failed();
     return;
   }
@@ -104,7 +104,7 @@ void RadSensComponent::setup() {
   Uint16 old_sensitivity;
   if (!this->read_bytes(RADSENS_REGISTER_CONTROL_SENSITIVITY, old_sensitivity.a8, 2)) {
     ESP_LOGCONFIG(TAG, "RadSens Setup: failed reading sensitivity");
-    this->error_code_ = COMMUNICATION_FAILED;
+    this->error_code_ = COMMUNICATION_FAILED_5;
     this->mark_failed();
     return;
   }
@@ -118,7 +118,7 @@ void RadSensComponent::setup() {
     ESP_LOGCONFIG(TAG, "RadSens setup: writing %u %u", sensitivity_to_send.a8[0], sensitivity_to_send.a8[1]);
     if (!this->write_bytes(RADSENS_REGISTER_CONTROL_SENSITIVITY, sensitivity_to_send.a8, 2)) {
       ESP_LOGCONFIG(TAG, "RadSens Setup: failed writing sensitivity");
-      this->error_code_ = COMMUNICATION_FAILED;
+      this->error_code_ = COMMUNICATION_FAILED_6;
       this->mark_failed();
       return;
     }
@@ -139,8 +139,18 @@ void RadSensComponent::setup() {
 void RadSensComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "RadSens:");
   LOG_I2C_DEVICE(this);
-  if (this->error_code_ == COMMUNICATION_FAILED) {
-    ESP_LOGE(TAG, "Communication with RadSens failed!");
+  if (this->error_code_ == COMMUNICATION_FAILED_1) {
+    ESP_LOGE(TAG, "Communication 1 with RadSens failed!");
+  } else if (this->error_code_ == COMMUNICATION_FAILED_2) {
+    ESP_LOGE(TAG, "Communication 2 with RadSens failed!");
+  } else if (this->error_code_ == COMMUNICATION_FAILED_3) {
+    ESP_LOGE(TAG, "Communication 3 with RadSens failed!");
+  } else if (this->error_code_ == COMMUNICATION_FAILED_4) {
+    ESP_LOGE(TAG, "Communication 4 with RadSens failed!");
+  } else if (this->error_code_ == COMMUNICATION_FAILED_5) {
+    ESP_LOGE(TAG, "Communication 5 with RadSens failed!");
+  } else if (this->error_code_ == COMMUNICATION_FAILED_6) {
+    ESP_LOGE(TAG, "Communication 6 with RadSens failed!");
   } else if (this->error_code_ == ID_REGISTERS) {
     ESP_LOGE(TAG, "The ID registers don't match - Is this really a RadSens?");
   }

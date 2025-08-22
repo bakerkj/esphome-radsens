@@ -61,7 +61,12 @@ class RadSensComponent : public PollingComponent, public i2c::I2CDevice {
 
   enum ErrorCode {
     NONE = 0,
-    COMMUNICATION_FAILED,
+    COMMUNICATION_FAILED_1,
+    COMMUNICATION_FAILED_2,
+    COMMUNICATION_FAILED_3,
+    COMMUNICATION_FAILED_4,
+    COMMUNICATION_FAILED_5,
+    COMMUNICATION_FAILED_6,
     ID_REGISTERS,
   } error_code_ = NONE;
 
