@@ -183,6 +183,13 @@ void RadSensComponent::update() {
     return;
   }
 
+  // All three reads succeeded — clear any warning flag latched from a prior
+  // transient I2C glitch. Without this, one bus error stays visible until
+  // reboot because status_set_warning() is idempotent per set_status_flag_.
+  // Matches the pattern in canonical ESPHome sensors (sht3xd, bme280 etc.)
+  // where warnings are transient and self-clear on the first recovery.
+  this->status_clear_warning();
+
   raw_dynamic_intensity.u32 = convert_big_endian(raw_dynamic_intensity.u32);
   raw_static_intensity.u32 = convert_big_endian(raw_static_intensity.u32);
 
