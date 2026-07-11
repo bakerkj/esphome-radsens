@@ -51,6 +51,21 @@ class RadSensComponent : public PollingComponent, public i2c::I2CDevice {
  protected:
   void set_control(uint8_t reg, uint8_t val);
   bool get_control(uint8_t reg);
+  // Retry-wrapped 16-bit read for the pulse counter. Occasional bus
+  // glitches cause read failures; a short delay + retry recovers cleanly
+  // without user-visible warning flapping.
+  bool read_byte_16_with_retry_(uint8_t reg, uint16_t *data);
+  // Read a 24-bit intensity register, retrying on either a bus failure OR
+  // the known INTENSITY_CORRUPT_SIGNATURE (0x010001) which the sensor
+  // returns when an intensity read follows a bus timeout too quickly.
+  // Both failure modes use the same backoff schedule.
+  bool read_intensity_(uint8_t reg, Uint32 *out);
+  // Retry policy: 3 attempts with backoff (10ms, 20ms between attempts).
+  static constexpr uint32_t READ_MAX_ATTEMPTS = 3;
+  static constexpr uint32_t READ_RETRY_BASE_DELAY_MS = 10;
+  // Known corruption signature: the sensor returns this exact 24-bit raw
+  // value when an intensity read follows a bus timeout too quickly.
+  static constexpr uint32_t INTENSITY_CORRUPT_SIGNATURE = 0x010001;
   sensor::Sensor *dynamic_intensity_sensor_{nullptr};
   sensor::Sensor *static_intensity_sensor_{nullptr};
   sensor::Sensor *counts_per_minute_sensor_{nullptr};
