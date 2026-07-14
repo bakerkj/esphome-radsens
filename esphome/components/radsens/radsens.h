@@ -51,6 +51,20 @@ class RadSensComponent : public PollingComponent, public i2c::I2CDevice {
  protected:
   void set_control(uint8_t reg, uint8_t val);
   bool get_control(uint8_t reg);
+  // Retry-wrapped 16-bit read. Occasional bus glitches cause read
+  // failures on this sensor; a short delay + retry recovers cleanly
+  // without user-visible warning flapping. Empirically the RadSens
+  // requires ~15ms of settle time after a bus timeout before it
+  // returns valid data — a faster retry can come back with plausible-
+  // looking but corrupt payloads.
+  bool read_byte_16_with_retry_(uint8_t reg, uint16_t *data);
+  // Retry-wrapped multi-byte read used for the 24-bit intensity
+  // registers. Same rationale as read_byte_16_with_retry_.
+  bool read_bytes_with_retry_(uint8_t reg, uint8_t *buf, size_t len);
+  // Retry policy: 3 attempts with a flat 15ms delay before each retry
+  // (cumulative 30ms before attempt 3).
+  static constexpr uint32_t READ_MAX_ATTEMPTS = 3;
+  static constexpr uint32_t READ_RETRY_BASE_DELAY_MS = 15;
   sensor::Sensor *dynamic_intensity_sensor_{nullptr};
   sensor::Sensor *static_intensity_sensor_{nullptr};
   sensor::Sensor *counts_per_minute_sensor_{nullptr};

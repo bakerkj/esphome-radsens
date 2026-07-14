@@ -161,55 +161,88 @@ void RadSensComponent::dump_config() {
 float RadSensComponent::get_setup_priority() const { return setup_priority::DATA; }
 void RadSensComponent::set_sensitivity(uint16_t sensitivity) { this->sensitivity_ = sensitivity; }
 
+bool RadSensComponent::read_byte_16_with_retry_(uint8_t reg, uint16_t *data) {
+  for (uint32_t attempt = 1; attempt <= READ_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 1) {
+      // Flat 15ms before each retry — a faster retry can come back
+      // with corrupt payloads (byte-swapped words, all-zero, etc.);
+      // 15ms lets the sensor settle after the bus timeout.
+      delay(READ_RETRY_BASE_DELAY_MS);
+    }
+    if (this->read_byte_16(reg, data)) {
+      if (attempt > 1)
+        ESP_LOGD(TAG, "read_byte_16 reg=0x%02x recovered on attempt %u", reg, attempt);
+      return true;
+    }
+  }
+  ESP_LOGW(TAG, "read_byte_16 reg=0x%02x failed after %u attempts", reg, READ_MAX_ATTEMPTS);
+  return false;
+}
+
+bool RadSensComponent::read_bytes_with_retry_(uint8_t reg, uint8_t *buf, size_t len) {
+  for (uint32_t attempt = 1; attempt <= READ_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 1)
+      delay(READ_RETRY_BASE_DELAY_MS);
+    if (this->read_bytes(reg, buf, len)) {
+      if (attempt > 1)
+        ESP_LOGD(TAG, "read_bytes reg=0x%02x recovered on attempt %u", reg, attempt);
+      return true;
+    }
+  }
+  ESP_LOGW(TAG, "read_bytes reg=0x%02x failed after %u attempts", reg, READ_MAX_ATTEMPTS);
+  return false;
+}
+
 void RadSensComponent::update() {
   // must be zero'd as we write to the last 3 bytes
   // Union allows us to write as bytes then read / write as u32
-  Uint32 raw_dynamic_intensity{}, raw_static_intensity{}; 
-  uint16_t raw_counts;
-  // NOTES: 
+  Uint32 raw_dynamic_intensity{}, raw_static_intensity{};
+  uint16_t raw_counts = 0;
+  uint32_t this_update = millis();
+
   // The manual says reading the rawcount resets it.
   // However it appears reading *any* I2C value resets the raw count
-  // This reads the raw count first to make sure we don't lose that data 
-  // I think we can still lose some between the count read and the intensity reads
-  // but we do them as quickly as we can to minimize data loss 
-  // TODO: see if we can keep the bus open?
-  // The intensity values are 24bit uints that is why this writes 1 byte into a 32bit uint
-  // we also have to fix endien
-  uint32_t this_update = millis();
-  if (!this->read_byte_16(RADSENS_REGISTER_DATA_PULSE_COUNTER, &raw_counts) ||
-      !this->read_bytes(RADSENS_REGISTER_DATA_DYNAMIC_INTENSITY, &raw_dynamic_intensity.a8[1], 3) ||
-      !this->read_bytes(RADSENS_REGISTER_DATA_STATIC_INTENSITY, &raw_static_intensity.a8[1], 3)){
+  // This reads the raw count first to make sure we don't lose that data
+  bool counter_ok = this->read_byte_16_with_retry_(RADSENS_REGISTER_DATA_PULSE_COUNTER, &raw_counts);
+  if (counter_ok) {
+    // Publish CPM immediately: pulses on the sensor at read time are gone
+    // once we take them, so we must publish even if a later read fails.
+    if (this->last_update != 0 && this->counts_per_minute_sensor_ != nullptr) {
+      float scale_to_minutes = (this_update - this->last_update) / 60000.0;
+      this->counts_per_minute_sensor_->publish_state(raw_counts / scale_to_minutes);
+    }
+    this->last_update = this_update;
+    ESP_LOGD(TAG, "Got counts=%u", raw_counts);
+  }
+
+  bool dynamic_ok = this->read_bytes_with_retry_(RADSENS_REGISTER_DATA_DYNAMIC_INTENSITY, &raw_dynamic_intensity.a8[1], 3);
+  if (dynamic_ok) {
+    raw_dynamic_intensity.u32 = convert_big_endian(raw_dynamic_intensity.u32);
+    if (this->dynamic_intensity_sensor_ != nullptr)
+      this->dynamic_intensity_sensor_->publish_state(raw_dynamic_intensity.u32 * 0.1);
+    ESP_LOGD(TAG, "Got dynamic=%.1f", raw_dynamic_intensity.u32 * 0.1);
+  }
+
+  bool static_ok = this->read_bytes_with_retry_(RADSENS_REGISTER_DATA_STATIC_INTENSITY, &raw_static_intensity.a8[1], 3);
+  if (static_ok) {
+    raw_static_intensity.u32 = convert_big_endian(raw_static_intensity.u32);
+    if (this->static_intensity_sensor_ != nullptr)
+      this->static_intensity_sensor_->publish_state(raw_static_intensity.u32 * 0.1);
+    ESP_LOGD(TAG, "Got static=%.1f", raw_static_intensity.u32 * 0.1);
+  }
+
+  // Warning flag reflects the current cycle's health. Any read failure —
+  // which by definition means retries were already exhausted — flips the
+  // flag on. A fully clean cycle clears it. status_set_warning() is
+  // idempotent per set_status_flag_ in ESPHome core, so the explicit
+  // clear is required or a single glitch would stick until reboot.
+  if (!counter_ok || !dynamic_ok || !static_ok) {
     this->status_set_warning();
-    return;
+  } else {
+    this->status_clear_warning();
   }
 
-  // All three reads succeeded — clear any warning flag latched from a prior
-  // transient I2C glitch. Without this, one bus error stays visible until
-  // reboot because status_set_warning() is idempotent per set_status_flag_.
-  // Matches the pattern in canonical ESPHome sensors (sht3xd, bme280 etc.)
-  // where warnings are transient and self-clear on the first recovery.
-  this->status_clear_warning();
-
-  raw_dynamic_intensity.u32 = convert_big_endian(raw_dynamic_intensity.u32);
-  raw_static_intensity.u32 = convert_big_endian(raw_static_intensity.u32);
-
-  ESP_LOGD(TAG, "Got dynamic=%.1f static=%.1f counts=%d", 
-                raw_dynamic_intensity.u32 * 0.1,
-                raw_static_intensity.u32 * 0.1,
-                raw_counts);
-
-  if (this->last_update != 0 && (this->counts_per_minute_sensor_ != nullptr)){
-    float scale_to_minutes = ((millis() - this->last_update) / 60000.0);
-    this->counts_per_minute_sensor_->publish_state(raw_counts / scale_to_minutes);
-  }
-  this->last_update = millis();
-
-  if (this->dynamic_intensity_sensor_ != nullptr)
-    this->dynamic_intensity_sensor_->publish_state(raw_dynamic_intensity.u32 * 0.1);
-  if (this->static_intensity_sensor_ != nullptr)
-    this->static_intensity_sensor_->publish_state(raw_static_intensity.u32 * 0.1);
-
-  if (this->firmware_version_sensor_ != nullptr)
+  if (this->firmware_version_sensor_ != nullptr && counter_ok && dynamic_ok && static_ok)
     this->firmware_version_sensor_->publish_state(this->firmware_version);
 
 }
